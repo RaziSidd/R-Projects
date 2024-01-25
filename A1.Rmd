@@ -1,0 +1,195 @@
+---
+title: "Project 1"
+output:
+  html_document:
+    df_print: paged
+  html_notebook: default
+  pdf_document: default
+urlcolor: blue
+editor_options:
+  chunk_output_type: inline
+---
+
+```{r setup, include=FALSE}
+library(ggplot2)
+library(forecast)
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, fig.width=7, fig.height=5)
+```
+
+
+After taking the data of the stock of a certain company, I was able to plot it from 2010 to 2020 to show its fluctuations
+
+```{r}
+
+library(quantmod)
+getSymbols("K.TO", from = "2010/12/31", to = "2020/12/31")
+plot(K.TO$K.TO.Adjusted)
+```
+
+
+Calculating and plotting the logarithmic returns
+
+```{r}
+quantmod::dailyReturn(K.TO, type = "log")
+diff(log(K.TO))
+print('We get the same output with the first order differencing in K.TO.Close')
+
+```
+
+
+
+By plotting the ACF, we can see that it is uncorrelated 
+
+```{r}
+acf(dailyReturn(K.TO, type = "log"))
+
+print("We know that if a ACF shows 95% of autocorrelations to fall whitin the +-2sqrt(n) SD, then it is a WN and uncorrelated, as seen below")
+
+```
+
+
+d. [4 marks] Consider what would happen if the returns were predictable, let's say following an MA(1) model $R_t = \mu + V_t + .5 V_{t-1}$, where $V_t \sim ^{iid} N(0,\sigma_v^2)$. First, estimate the values of $\mu$ and $\sigma_v^2$ based on the mean and variance of your stock's daily returns, by setting $\mu = \bar{R}$ and $\sigma_v^2 = S_R^2 / 1.25$, where $\bar{R},S_R^2$ are the sample mean and variance of the returns. 
+(If you are wondering about the division by 1.25, remember that for the MA(1) model $X_t = W_t + \theta W_{t-1}$ we have $V[X_t]=(1+\theta^2) \sigma^2_w$.)
+
+Suppose the returns followed an MA(1) model $R_t = \mu + V_t + .5 V_{t-1}$, where $V_t \sim ^{iid} N(0,\sigma_v^2)$, this is what would happen 
+
+```{r}
+
+mu = mean(dailyReturn(K.TO, type = "log"))
+sigma = var(dailyReturn(K.TO, type = "log"))/1.25
+n=2500
+MA = stats::filter( rnorm(n+1, 0, sigma), c(1, .5), side = 1, method = "convolution") + mu
+head(MA)
+
+```
+
+Then we can simulate 2500 returns to see the autocorrelation
+
+```{r}
+acf(MA[-1])
+print("This showcases an MA AC as the pattern is 1 large lag before dropping to normal pattern, showign how it is a MA 1 model")
+
+```
+
+A simple trading stratagy then would show what would happen if the stock was predictable perfectly
+
+```{r}
+i = 2
+total = 0
+total_2 = 0
+while (i <= 2500) {
+  if (MA[i] > 0) {
+    total = total + MA[i+1]
+    #print('add')
+
+  } else{
+    total = total - MA[i+1]
+    #print('sub')
+  }
+  total_2 = total_2 + MA[i]
+  i = i + 1
+}
+
+total
+total_2
+
+print("As you can see, the returns of adding are negative, while the returns of the method are positive, meaning that in the method shown, you will never lose money and will always come out with a profit without risk")
+```
+
+
+
+
+```{r, message = F}
+library(cansim)
+library(tidyverse)
+
+Xua = get_cansim_vector( "v2066780", start_time = "2000-01-01", end_time = "2019-12-01") %>% 
+  pull(VALUE) %>% ts( start = c(2000,1), frequency = 12)
+plot(Xua) 
+Xua
+```
+
+
+```{r}
+
+plot( Xua, type="o", pch =20)
+acf(Xua)
+
+print("You can see that the ACF has a decreasing always positive output, meaning that it's trend is upwards, with plateaus implying seasonality, and most likley not stationary")
+
+
+```
+
+
+
+```{r}
+#a
+trend <- stats::filter(Xua, filter = rep(1 / 12, 12), sides = 2)
+plot(Xua)
+lines(trend, col = "red", lwd = 2)
+
+#b
+
+detrend = Xua / trend
+Qr = as.factor( cycle(detrend) )
+
+out = lm((detrend) ~ Qr -1 )
+f = out$coefficients/mean(out$coefficients)
+seasonal = rep(f, 20)
+remainder = Xua/(trend*rep(f, 20))
+#c
+
+plot(decompose(Xua))
+plot(Xua)
+plot(trend)
+plot(seasonal, type = "l")
+plot(remainder)
+
+
+```
+
+
+
+
+```{r}
+ Xua_adjust = get_cansim_vector( "v2064701", start_time = "2000-01-01", end_time = "2019-12-01") %>% 
+  pull(VALUE) %>% ts( start = c(2000,1), frequency = 12)
+plot(Xua_adjust)
+
+lines(remainder*trend, col='red')
+
+mean( (Xua_adjust - (remainder*trend) )^2, na.rm = TRUE)
+
+
+
+```
+
+
+
+```{r}
+library(seasonal)
+
+Xua %>% seas(x11="") -> fitx11
+# autoplot(fitx11) +
+#   ggtitle("X11 decomposition ")
+Xua %>% seas() -> fitseats
+# autoplot(fitseats) +
+#   ggtitle("SEATS decomposition")
+plot(fitx11)
+plot(fitseats)
+
+fitx11_adj = seasadj(fitx11)
+fitseats_adj = seasadj(fitseats)
+plot.new()
+plot(Xua_adjust)
+lines(fitx11_adj, col='red')
+lines(fitseats_adj, col='blue')
+
+mean( (Xua_adjust - (fitx11_adj) )^2, na.rm = TRUE)
+mean( (Xua_adjust - (fitseats_adj) )^2, na.rm = TRUE)
+
+print("the x11 is better as the MSE is smaller")
+
+
+```
+
