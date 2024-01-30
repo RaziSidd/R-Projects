@@ -1,0 +1,170 @@
+---
+title: "Project 2"
+output:
+  html_document:
+    df_print: paged
+  html_notebook: default
+editor_options:
+  chunk_output_type: console
+urlcolor: red
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, fig.width=7, fig.height=5)
+```
+
+### Practice
+
+ 
+
+```{r}
+
+library(cansim)
+library(tidyverse)
+library(forecast)
+library(tseries)
+library(astsa) # loads required data
+
+
+
+# unadjusted series for All-items
+X = get_cansim_vector( "v41691222", start_time = "2011-01-01", end_time = "2020-12-01") %>% 
+    pull(VALUE) %>% ts( start = c(2011,1), frequency = 12)
+```
+
+
+
+
+```{r}
+
+plot(X)
+print("We can see there is no exponential growth but a linear one, but there is an upward trend")
+astsa::acf2(X)
+
+y = stl( X, s.window = 12 ) %>% remainder
+plot(y)
+astsa::acf2(y)
+
+```
+
+
+
+```{r}
+
+print("An appropriate model would be 2,0,1, in both")
+
+fit_ar = forecast::Arima(y, order=c(2,0,1), seasonal = list( order = c(2,0,1), period = 12))
+fit_ar
+
+print("Fit is good, the AIC is lower if we use this model than someting like 2,0,1 2,0,0.")
+
+```
+
+
+
+
+```{r}
+
+
+forecast::auto.arima(X)
+fit_ma = forecast::Arima(X, order=c(2,1,1), seasonal = list(order = c(2,0,0), period = 12))
+fit_ma
+
+print("We cannot compare the model AIC's as the previous has some changes made to it, but the former has a lower AIC")
+```
+
+
+
+```{r}
+
+
+Z = get_cansim_vector( "v41691222", start_time = "2020-01-01", end_time = "2021-9-01") %>% 
+    pull(VALUE) %>% ts( start = c(2020,1), frequency = 12)
+
+fore = sarima.for(X, n.ahead=9, 2, 1, 1)
+lines(Z, lwd=1, col = "blue")
+
+print("In this case, the predictions are not great, leading to an estimation which does not reflect the true values we want to see")
+
+```
+
+
+
+```{r}
+
+
+fit <- forecast::Arima(Z, order=c(2,1,1))
+fit2 <- forecast::Arima(Z,order=c(2,1,1), model=fit)
+onestep <- fitted(fit2)
+
+plot(onestep)
+fore = sarima.for(X, n.ahead=9, 2, 1, 1)
+lines(Z, lwd=0.5, col = "blue")
+lines(onestep, lwd=0.5, col = "red")
+
+print("The iterative is better as it uses the values which are based on a fitted model, so it more naturally follows the real")
+
+```
+
+
+
+```{r}
+set.seed(1006419038)
+B = arima.sim( model = list( ar = c(1.3, -0.4, -0.3) ), 100)
+
+plot(B)
+astsa::acf2(B)
+
+
+```
+
+
+
+
+```{r}
+
+w.fit = ar.yw( B, order=3)
+w.fit
+w.fit$x.mean
+w.fit$ar
+w.fit$var.pred
+w.fit$asy.var
+
+
+```
+
+
+
+
+```{r}
+
+tot = acf(B, type = "covariance")
+
+gamma = toeplitz( tot$acf[1:3,1,1] )
+
+```
+
+
+
+
+```{r}
+
+# Getting 1,0,0 instead of real values
+
+phi = solve(gamma, tot$acf[2:4])
+phi
+w.fit$ar
+
+print("These are the same values")
+
+```
+
+
+```{r}
+
+(w.fit$var.pred * solve(gamma))/ 100
+w.fit$asy.var
+print("THis is the same as the fitted one from the yule-walker output")
+
+```
+
